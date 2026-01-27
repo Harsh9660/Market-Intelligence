@@ -1,0 +1,22 @@
+[project]
+name = "market-intelligence"
+version = "0.1.0"
+description = "Financial analysis platform for market intelligence."
+authors = [
+    {name = "Harsh Pandya"}
+]
+dependencies = [
+    "streamlit",
+    "pandas",
+    "plotly",
+    "requests",
+    "python-dotenv",
+]
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
+fix = true
+
+[tool.ruff.isort]
+known-first-party = ["app"]
