@@ -121,14 +121,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- DATA LAYER ---
-@st.cache_data(ttl=60)
+# @st.cache_data(ttl=60) # Disabled for debugging live updates
 def fetch_tickers():
     try:
         response = requests.get(f"{API_BASE_URL}/tickers/", timeout=2)
         return response.json().get('tickers', []) if response.status_code == 200 else []
     except: return []
 
-@st.cache_data(ttl=60)
+# @st.cache_data(ttl=60)
 def fetch_market_summary():
     try:
         response = requests.get(f"{API_BASE_URL}/summary/", timeout=2)
@@ -181,9 +181,14 @@ def main():
             
         selected_ticker = st.selectbox("ACTIVE ASSET", tickers, index=0)
         
-        st.markdown("### ⚙️ CONTROLS")
-        refresh = st.button("Reconnect Stream", use_container_width=True)
-        if refresh: st.cache_data.clear()
+        button_col1, button_col2 = st.columns(2)
+        with button_col1:
+            if st.button("🔄 Refresh", use_container_width=True):
+                st.cache_data.clear()
+                st.rerun()
+        with button_col2:
+            if st.button("🚀 Pipeline", use_container_width=True):
+                 st.toast("Triggering Pipeline... (feature coming soon)")
 
         st.markdown("---")
         st.info(f"Connected: {len(tickers)} Assets")
