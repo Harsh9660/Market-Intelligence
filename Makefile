@@ -4,10 +4,10 @@ install:
 	pip install -r requirements.txt
 
 pipeline:
-	python pipeline.py
+	python3 pipeline.py
 
 api:
-	python manage.py runserver 8000
+	python3 manage.py runserver 8000
 
 run:
 	streamlit run streamlit_app/app.py

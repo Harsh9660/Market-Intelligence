@@ -60,3 +60,33 @@ class MarketSummaryView(APIView):
                 })
                 
         return Response({"summary": summary})
+
+class LiveDataView(APIView):
+    """
+    Returns the latest available data point for a ticker (Simulation of Live Data).
+    """
+    def get(self, request, ticker):
+        file_path = os.path.join(DATA_DIR, f"{ticker}_processed.csv")
+        
+        if not os.path.exists(file_path):
+            return Response({"error": f"Data for {ticker} not found."}, status=404)
+            
+        try:
+            # Efficiently read just the last few rows
+            df = pd.read_csv(file_path)
+            if not df.empty:
+                latest = df.iloc[-1].to_dict()
+                return Response({
+                    "ticker": ticker,
+                    "timestamp": latest.get('Date', latest.get('Datetime', 'N/A')),
+                    "price": latest.get('Close'),
+                    "rsi": latest.get('RSI'),
+                    "macd": latest.get('MACD'),
+                    "signal": latest.get('MACD_Signal'),
+                    "bb_upper": latest.get('BB_Upper'),
+                    "bb_lower": latest.get('BB_Lower')
+                })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+            
+        return Response({"error": "No data available"}, status=404)

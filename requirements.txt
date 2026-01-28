@@ -10,3 +10,4 @@ matplotlib
 seaborn
 djangorestframework
 django-cors-headers
+PyYAML

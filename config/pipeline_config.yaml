@@ -1,0 +1,37 @@
+pipeline:
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - TSLA
+    - NVDA
+    - BTC-USD
+    - ETH-USD
+  
+  data:
+    period: "7d"       # 7 days for granular data
+    interval: "1m"     # 1-minute interval for "live" feel
+    live_mode: true
+
+  features:
+    technical_indicators:
+      - name: "SMA"
+        windows: [20, 50, 200]
+      - name: "RSI"
+        window: 14
+      - name: "MACD"
+        fast: 12
+        slow: 26
+        signal: 9
+      - name: "BollingerBands"
+        window: 20
+        std_dev: 2
+    
+    transformations:
+      - "log_return"
+      - "lagged_features"
+
+  storage:
+    format: "csv"
+    compression: null
