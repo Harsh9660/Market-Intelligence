@@ -3,14 +3,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import requests
-import time
 from datetime import datetime
 
 # --- CONFIGURATION & PAGE SETUP ---
 API_BASE_URL = "http://localhost:8001/api/v1"
 
 st.set_page_config(
-    page_title="RevenueIQ Pro",
+    page_title="Market Analysis Terminal",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -66,6 +65,10 @@ st.markdown("""
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         position: relative;
         overflow: hidden;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     
     .fin-card::before {
@@ -146,11 +149,16 @@ def card_metric(label, value, delta=None, prefix="", suffix="", col=None):
         color_cls = "delta-pos" if delta >= 0 else "delta-neg"
         icon = "▲" if delta >= 0 else "▼"
         delta_html = f'<span class="metric-delta {color_cls}">{icon} {abs(delta):.2f}%</span>'
+    else:
+        # Add a non-visible placeholder to maintain space and alignment
+        delta_html = '<span class="metric-delta" style="visibility: hidden;">&nbsp;</span>'
     
     html = f"""
     <div class="fin-card">
-        <div class="metric-label">{label}</div>
-        <div class="metric-value">{prefix}{value}{suffix}</div>
+        <div>
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{prefix}{value}{suffix}</div>
+        </div>
         {delta_html}
     </div>
     """
@@ -190,6 +198,14 @@ def main():
     df = fetch_data(selected_ticker)
     
     if df is not None:
+        # Standardize Date Column
+        if 'Datetime' in df.columns:
+            df.rename(columns={'Datetime': 'Date'}, inplace=True)
+        
+        # Ensure Date is datetime object
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+            
         latest = df.iloc[-1]
         prev = df.iloc[-2]
         price_ret = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
@@ -201,9 +217,8 @@ def main():
         card_metric("Volatility (Std)", f"{latest['Volatility']:.2f}", None, "", "", m3)
         card_metric("MACD Signal", f"{latest['MACD_Signal']:.3f}", None, "", "", m4)
         
-        st.markdown("###") # Spacer
-
-        # --- MAIN CHART AREA ---
+        st.markdown("###") 
+        
         c_main, c_side = st.columns([3, 1])
         
         with c_main:
