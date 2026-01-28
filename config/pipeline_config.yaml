@@ -8,10 +8,15 @@ pipeline:
     - NVDA
     - BTC-USD
     - ETH-USD
+    - SPY
+    - QQQ
+    - META
+    - NFLX
+    - AMD
   
   data:
-    period: "7d"       # 7 days for granular data
-    interval: "1m"     # 1-minute interval for "live" feel
+    period: "1mo"      # Increased period to ensure enough data for indicators
+    interval: "1h"     # 1h interval is more stable for "Live" demo than 1m (which often has gaps or requires premium data)
     live_mode: true
 
   features:

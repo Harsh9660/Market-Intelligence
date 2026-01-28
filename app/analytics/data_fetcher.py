@@ -24,21 +24,18 @@ def fetch_data(ticker, period=None, interval=None):
     print(f"Fetching {ticker} (Period: {period}, Interval: {interval})...")
     
     try:
-        # yfinance download for better control
         df = yf.download(ticker, period=period, interval=interval, progress=False)
         
         if df.empty:
             print(f"Warning: No data found for {ticker}")
             return None
 
-        # Flatten MultiIndex columns if present (common in new yfinance)
+        
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
-        # Ensure DATA_DIR exists
         os.makedirs(DATA_DIR, exist_ok=True)
         
-        # Save raw data
         file_path = os.path.join(DATA_DIR, f"{ticker}_raw.csv")
         df.to_csv(file_path)
         return df
@@ -48,5 +45,4 @@ def fetch_data(ticker, period=None, interval=None):
         return None
 
 if __name__ == "__main__":
-    # Test fetch with config
     fetch_data("AAPL")

@@ -20,7 +20,6 @@ def calculate_features(df):
     config = load_config()
     features = config['pipeline']['features']
     
-    # Ensure we are working with a copy to avoid SettingWithCopyWarning
     df = df.copy()
     
     # 1. Technical Indicators
@@ -69,8 +68,6 @@ def calculate_features(df):
     df['Momentum_1d'] = df['Close'].pct_change(1)
     df['Momentum_5d'] = df['Close'].pct_change(5)
 
-    # Drop NaN values created by rolling windows/lags
-    # For large datasets, we might want to impute, but for finance, dropping valid is often safer
     df_clean = df.dropna()
     
     return df_clean
@@ -87,8 +84,7 @@ def process_file(ticker):
     try:
         df = pd.read_csv(raw_path, index_col=0, parse_dates=True)
         
-        # Check if enough data exists for feature calculation
-        if len(df) < 50: # Minimal buffer
+        if len(df) < 50: 
             print(f"Not enough data to process {ticker} (need > 50 rows)")
             return False
 
