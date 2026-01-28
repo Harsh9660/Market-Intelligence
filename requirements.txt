@@ -8,3 +8,5 @@ yfinance
 scikit-learn
 matplotlib
 seaborn
+djangorestframework
+django-cors-headers
