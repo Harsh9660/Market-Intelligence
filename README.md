@@ -61,7 +61,7 @@ The backend server must be running for the frontend to fetch data.
 make api
 
 # OR using manual command
-python Returns manage.py runserver 8000
+python manage.py runserver 8000
 ```
 The API will be available at `http://localhost:8000/api/v1/`.
 
