@@ -84,7 +84,9 @@ class LiveDataView(APIView):
                     "macd": latest.get('MACD'),
                     "signal": latest.get('MACD_Signal'),
                     "bb_upper": latest.get('BB_Upper'),
-                    "bb_lower": latest.get('BB_Lower')
+                    "bb_lower": latest.get('BB_Lower'),
+                    "signal_label": latest.get('Signal_Label', 'NEUTRAL'),
+                    "signal_score": latest.get('Signal_Score', 0)
                 })
         except Exception as e:
             return Response({"error": str(e)}, status=500)

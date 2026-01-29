@@ -68,7 +68,47 @@ def calculate_features(df):
     df['Momentum_1d'] = df['Close'].pct_change(1)
     df['Momentum_5d'] = df['Close'].pct_change(5)
 
-    df_clean = df.dropna()
+    df_clean = df.dropna().copy()
+    
+    # 3. Predictive Signal Engine (Heuristic)
+    # -----------------------------------------
+    def get_signal(row):
+        score = 0
+        
+        # RSI Logic
+        if row['RSI'] < 30: score += 2      # Oversold -> Bullish
+        elif row['RSI'] > 70: score -= 2    # Overbought -> Bearish
+        elif row['RSI'] < 45: score += 0.5  # Slight Bullish bias
+        elif row['RSI'] > 55: score -= 0.5  # Slight Bearish bias
+        
+        # MACD Logic
+        if row['MACD'] > row['MACD_Signal']: score += 1.5
+        else: score -= 1.5
+        
+        # SMA Trend Logic
+        if row['Close'] > row['SMA_50']: score += 1
+        else: score -= 1
+        
+        if row['SMA_20'] > row['SMA_50']: score += 1
+        else: score -= 1
+        
+        # Bollinger Bands Logic
+        if row['Close'] < row['BB_Lower']: score += 2      # Price below lower band -> Bounce likely
+        elif row['Close'] > row['BB_Upper']: score -= 2    # Price above upper band -> Pullback likely
+        
+        return score
+
+    df_clean['Signal_Score'] = df_clean.apply(get_signal, axis=1)
+    
+    # Determine Label
+    def get_label(score):
+        if score >= 3: return "STRONG BUY"
+        elif score >= 1: return "BUY"
+        elif score <= -3: return "STRONG SELL"
+        elif score <= -1: return "SELL"
+        else: return "NEUTRAL"
+        
+    df_clean['Signal_Label'] = df_clean['Signal_Score'].apply(get_label)
     
     return df_clean
 

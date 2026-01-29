@@ -5,7 +5,6 @@ import plotly.express as px
 import requests
 from datetime import datetime
 
-# --- CONFIGURATION & PAGE SETUP ---
 API_BASE_URL = "http://localhost:8001/api/v1"
 
 st.set_page_config(
@@ -167,11 +166,23 @@ def card_metric(label, value, delta=None, prefix="", suffix="", col=None):
 
 # --- MAIN APP ---
 
-def main():
+    # SESSION STATE INIT
+    if 'view_mode' not in st.session_state: st.session_state.view_mode = "Market Pulse"
+    if 'selected_ticker' not in st.session_state: st.session_state.selected_ticker = tickers[0] if tickers else ""
+
     # SIDEBAR
     with st.sidebar:
         st.markdown("## ⚡ RevenueIQ")
         st.caption("INTELLIGENCE TERMINAL")
+        st.markdown("---")
+        
+        # NAVIGATION
+        # We use a callback or just update state on change
+        mode = st.radio("VIEW MODE", ["Market Pulse", "Asset Analysis"], 
+                        index=0 if st.session_state.view_mode == "Market Pulse" else 1,
+                        key="nav_radio",
+                        on_change=lambda: st.session_state.update(view_mode=st.session_state.nav_radio))
+        
         st.markdown("---")
         
         tickers = fetch_tickers()
@@ -179,7 +190,9 @@ def main():
             st.error("OFFLINE: Run pipeline")
             return
             
-        selected_ticker = st.selectbox("ACTIVE ASSET", tickers, index=0)
+        if st.session_state.view_mode == "Asset Analysis":
+            idx = tickers.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in tickers else 0
+            st.session_state.selected_ticker = st.selectbox("ACTIVE ASSET", tickers, index=idx)
         
         button_col1, button_col2 = st.columns(2)
         with button_col1:
@@ -193,164 +206,237 @@ def main():
         st.markdown("---")
         st.info(f"Connected: {len(tickers)} Assets")
 
-    # HEADER AREA
-    col_logo, col_kpi = st.columns([1, 3])
-    with col_logo:
-        st.title(selected_ticker)
-        st.caption("REAL-TIME MARKET DATA")
-    
-    # DATA LOADING
-    df = fetch_data(selected_ticker)
-    
-    if df is not None:
-        # Standardize Date Column
-        if 'Datetime' in df.columns:
-            df.rename(columns={'Datetime': 'Date'}, inplace=True)
+    # --- VIEW: MARKET PULSE (Dashboard) ---
+    if st.session_state.view_mode == "Market Pulse":
+        st.title("Market Pulse")
+        st.caption("GLOBAL MARKET OVERVIEW")
         
-        # Ensure Date is datetime object
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-            
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
-        price_ret = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
+        summary = fetch_market_summary()
         
-        # --- TOP METRIC ROW ---
-        m1, m2, m3, m4 = st.columns(4)
-        card_metric("Market Price", f"{latest['Close']:,.2f}", price_ret, "$", "", m1)
-        card_metric("RSI Momentum", f"{latest['RSI']:.1f}", (latest['RSI']-prev['RSI']), "", "", m2)
-        card_metric("Volatility (Std)", f"{latest['Volatility']:.2f}", None, "", "", m3)
-        card_metric("MACD Signal", f"{latest['MACD_Signal']:.3f}", None, "", "", m4)
+        if summary:
+            # --- QUICK SELECTOR ---
+            col_search, col_stats = st.columns([2, 1])
+            with col_search:
+                quick_ticker = st.selectbox("🔍 QUICK JUMP TO ASSET", ["Select an asset..."] + [item['ticker'] for item in summary])
+                
+                if quick_ticker != "Select an asset...":
+                    st.session_state.selected_ticker = quick_ticker
+                    st.session_state.view_mode = "Asset Analysis"
+                    st.rerun()
+            
+            st.markdown("###")
+            
+            # Create a 3-column grid
+            cols = st.columns(3)
+            for i, item in enumerate(summary):
+                with cols[i % 3]:
+                    # Determine color based on RSI or price
+                    trend_color = "var(--pos-green)" if item['last_rsi'] > 50 else "var(--neg-red)"
+                    
+                    st.markdown(f"""
+                    <div class="fin-card" style="margin-bottom: 20px; cursor: pointer;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span class="symbol-text">{item['ticker']}</span>
+                            <span class="price-text" style="color:{trend_color}">${item['last_close']:,.2f}</span>
+                        </div>
+                        <hr style="border-color:#222; margin: 10px 0;">
+                        <div style="display:flex; justify-content:space-between; font-size: 0.8rem; color: #888;">
+                            <span>RSI: <strong style="color:#fff">{item['last_rsi']:.1f}</strong></span>
+                            <span>VOL: <strong style="color:#fff">{item.get('last_volatility', 'N/A')}</strong></span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("No market summary data available.")
+
+    # --- VIEW: ASSET ANALYSIS (Deep Dive) ---
+    elif st.session_state.view_mode == "Asset Analysis":
+        # HEADER AREA
+        col_logo, col_kpi = st.columns([1, 3])
+        with col_logo:
+            st.title(st.session_state.selected_ticker)
+            st.caption("REAL-TIME MARKET DATA")
         
-        st.markdown("###") 
+        # DATA LOADING
+        df = fetch_data(st.session_state.selected_ticker)
         
-        c_main, c_side = st.columns([3, 1])
-        
-        with c_main:
-            st.markdown('<div class="fin-card">', unsafe_allow_html=True)
+        if df is not None and not df.empty:
+            # Standardize Date Column
+            if 'Datetime' in df.columns:
+                df.rename(columns={'Datetime': 'Date'}, inplace=True)
             
-            # Sophisticated Chart
-            fig = go.Figure()
+            # Ensure Date is datetime object
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+                
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
+            price_ret = ((latest['Close'] - prev['Close']) / prev['Close']) * 100
             
-            # Gradient Fill for Price
-            fig.add_trace(go.Scatter(
-                x=df['Date'], y=df['Close'],
-                mode='lines',
-                line=dict(color='#00f2ea', width=2),
-                fill='tozeroy',
-                fillcolor='rgba(0, 242, 234, 0.05)',
-                name='Price'
-            ))
+            # --- TOP METRIC ROW ---
+            m1, m2, m3, m4 = st.columns(4)
+            card_metric("Market Price", f"{latest['Close']:,.2f}", price_ret, "$", "", m1)
+            card_metric("RSI Momentum", f"{latest['RSI']:.1f}", (latest['RSI']-prev['RSI']), "", "", m2)
+            card_metric("Volatility (Std)", f"{latest['Volatility']:.2f}", None, "", "", m3)
+            card_metric("MACD Signal", f"{latest['MACD_Signal']:.3f}", None, "", "", m4)
             
-            # BB Bands with subtle style
-            fig.add_trace(go.Scatter(
-                x=df['Date'], y=df['BB_Upper'],
-                line=dict(color='rgba(255,255,255,0.1)', width=1),
-                name='Upper BB', hoverinfo='skip'
-            ))
-            fig.add_trace(go.Scatter(
-                x=df['Date'], y=df['BB_Lower'],
-                line=dict(color='rgba(255,255,255,0.1)', width=1),
-                fill='tonexty', fillcolor='rgba(255,255,255,0.02)',
-                name='Lower BB', hoverinfo='skip'
-            ))
+            # --- AI FORECAST CARD ---
+            st.markdown("###")
             
-            # Layout Polish
-            fig.update_layout(
-                template="plotly_dark",
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                height=450,
-                margin=dict(l=0, r=0, t=10, b=0),
-                xaxis=dict(showgrid=False, showline=False, zeroline=False),
-                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
-                hovermode="x unified"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Get signal (default to NEUTRAL if pipeline hasn't run yet)
+            signal = latest.get('Signal_Label', 'NEUTRAL')
+            score = latest.get('Signal_Score', 0)
             
-        with c_side:
-            # RSI Gauge
-            st.markdown('<div class="fin-card" style="height: 100%;">', unsafe_allow_html=True)
-            st.markdown(f"**RSI STRENGTH**")
-            
-            fig_gauge = go.Figure(go.Indicator(
-                mode = "gauge+number",
-                value = latest['RSI'],
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                gauge = {
-                    'axis': {'range': [0, 100], 'tickcolor': "#333"},
-                    'bar': {'color': "#00f2ea"},
-                    'bgcolor': "#111",
-                    'steps': [
-                        {'range': [0, 30], 'color': "rgba(0, 255, 127, 0.2)"},
-                        {'range': [70, 100], 'color': "rgba(255, 51, 51, 0.2)"}
-                    ],
-                }
-            ))
-            fig_gauge.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10), paper_bgcolor='rgba(0,0,0,0)', font={'color': "#fff"})
-            st.plotly_chart(fig_gauge, use_container_width=True)
-            
-            # Trend Text
-            trend = "BULLISH" if latest['Close'] > latest['SMA_50'] else "BEARISH"
-            trend_col = "#00ff7f" if trend == "BULLISH" else "#ff3333"
+            sig_color = "#888"
+            if "BUY" in signal: sig_color = "#00ff7f"
+            elif "SELL" in signal: sig_color = "#ff3333"
             
             st.markdown(f"""
-            <div style="text-align: center; margin-top: 10px;">
-                <div style="font-size: 12px; color: #888;">MARKET REGIME</div>
-                <div style="font-size: 24px; font-weight: 800; color: {trend_col}; letter-spacing: 2px;">{trend}</div>
+            <div class="fin-card" style="border: 1px solid {sig_color}; box-shadow: 0 0 20px {sig_color}20;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-size: 14px; color: #888; letter-spacing: 2px;">🤖 REVENUEIQ PREDICTIVE ENGINE</div>
+                        <div style="font-size: 36px; font-weight: 800; color: {sig_color}; text-shadow: 0 0 10px {sig_color}40;">{signal}</div>
+                        <div style="color: #666; font-size: 12px; margin-top: 5px;">CONFIDENCE SCORE: {score:.2f} / 10.0</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size: 12px; marginBottom: 5px;">FORECAST DIRECTION</div>
+                        <div style="font-size: 24px;">{"↗️ UP" if score > 0 else "↘️ DOWN" if score < 0 else "➡️ FLAT"}</div>
+                    </div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+                
+            st.markdown("###") # Spacer
 
-        # --- TABS SECTION ---
-        st.markdown("###")
-        t1, t2, t3 = st.tabs(["📊 RAW DATA LAKE", "🌊 FEATURE CORRELATION", "📡 MARKET PULSE"])
-        
-        with t1:
-            st.markdown('<div class="fin-card">', unsafe_allow_html=True)
-            st.dataframe(
-                df.sort_values('Date', ascending=False), 
-                use_container_width=True, 
-                height=300,
-                column_config={
-                    "Date": st.column_config.DatetimeColumn("Timestamp", format="D MMM, HH:mm"),
-                    "Close": st.column_config.NumberColumn("Price", format="$%.2f"),
-                    "Volume": st.column_config.NumberColumn("Vol", format="%d")
-                }
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+            # --- MAIN CHART AREA ---
+            c_main, c_side = st.columns([3, 1])
             
-        with t2:
-            st.markdown('<div class="fin-card">', unsafe_allow_html=True)
-            numeric = df.select_dtypes(include=['float64']).drop(columns=['Open','High','Low','Close'], errors='ignore')
-            corr = numeric.corr()
-            fig_corr = px.imshow(corr, color_continuous_scale='Tealgrn', aspect="auto")
-            fig_corr.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig_corr, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            with c_main:
+                st.markdown('<div class="fin-card">', unsafe_allow_html=True)
+                
+                # Sophisticated Chart
+                fig = go.Figure()
+                
+                # Gradient Fill for Price
+                fig.add_trace(go.Scatter(
+                    x=df['Date'], y=df['Close'],
+                    mode='lines',
+                    line=dict(color='#00f2ea', width=2),
+                    fill='tozeroy',
+                    fillcolor='rgba(0, 242, 234, 0.05)',
+                    name='Price'
+                ))
+                
+                # BB Bands with subtle style
+                fig.add_trace(go.Scatter(
+                    x=df['Date'], y=df['BB_Upper'],
+                    line=dict(color='rgba(255,255,255,0.1)', width=1),
+                    name='Upper BB', hoverinfo='skip'
+                ))
+                fig.add_trace(go.Scatter(
+                    x=df['Date'], y=df['BB_Lower'],
+                    line=dict(color='rgba(255,255,255,0.1)', width=1),
+                    fill='tonexty', fillcolor='rgba(255,255,255,0.02)',
+                    name='Lower BB', hoverinfo='skip'
+                ))
+                
+                # Layout Polish
+                fig.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    height=450,
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    xaxis=dict(showgrid=False, showline=False, zeroline=False),
+                    yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            with c_side:
+                # RSI Gauge
+                st.markdown('<div class="fin-card" style="height: 100%;">', unsafe_allow_html=True)
+                st.markdown(f"**RSI STRENGTH**")
+                
+                fig_gauge = go.Figure(go.Indicator(
+                    mode = "gauge+number",
+                    value = latest['RSI'],
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    gauge = {
+                        'axis': {'range': [0, 100], 'tickcolor': "#333"},
+                        'bar': {'color': "#00f2ea"},
+                        'bgcolor': "#111",
+                        'steps': [
+                            {'range': [0, 30], 'color': "rgba(0, 255, 127, 0.2)"},
+                            {'range': [70, 100], 'color': "rgba(255, 51, 51, 0.2)"}
+                        ],
+                    }
+                ))
+                fig_gauge.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10), paper_bgcolor='rgba(0,0,0,0)', font={'color': "#fff"})
+                st.plotly_chart(fig_gauge, use_container_width=True)
+                
+                # Trend Text
+                trend = "BULLISH" if latest['Close'] > latest['SMA_50'] else "BEARISH"
+                trend_col = "#00ff7f" if trend == "BULLISH" else "#ff3333"
+                
+                st.markdown(f"""
+                <div style="text-align: center; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #888;">MARKET REGIME</div>
+                    <div style="font-size: 24px; font-weight: 800; color: {trend_col}; letter-spacing: 2px;">{trend}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        with t3:
-             # Simulated Pulse/News
-             st.markdown("""
-             <div class="fin-card">
-                 <div style="font-family: monospace; color: #00f2ea;"> SYSTEM STATUS: ONLINE 🟢</div>
-                 <br>
-                 <div class="asset-row">
-                    <span class="symbol-text">DATA PIPELINE</span>
-                    <span class="price-text" style="color:#00ff7f">ACTIVE (1m LATENCY)</span>
+            # --- TABS SECTION ---
+            st.markdown("###")
+            t1, t2, t3 = st.tabs(["📊 RAW DATA LAKE", "🌊 FEATURE CORRELATION", "📡 MARKET PULSE"])
+            
+            with t1:
+                st.markdown('<div class="fin-card">', unsafe_allow_html=True)
+                st.dataframe(
+                    df.sort_values('Date', ascending=False), 
+                    use_container_width=True, 
+                    height=300,
+                    column_config={
+                        "Date": st.column_config.DatetimeColumn("Timestamp", format="D MMM, HH:mm"),
+                        "Close": st.column_config.NumberColumn("Price", format="$%.2f"),
+                        "Volume": st.column_config.NumberColumn("Vol", format="%d")
+                    }
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            with t2:
+                st.markdown('<div class="fin-card">', unsafe_allow_html=True)
+                numeric = df.select_dtypes(include=['float64']).drop(columns=['Open','High','Low','Close'], errors='ignore')
+                corr = numeric.corr()
+                fig_corr = px.imshow(corr, color_continuous_scale='Tealgrn', aspect="auto")
+                fig_corr.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig_corr, use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with t3:
+                 # Simulated Pulse/News
+                 st.markdown("""
+                 <div class="fin-card">
+                     <div style="font-family: monospace; color: #00f2ea;"> SYSTEM STATUS: ONLINE 🟢</div>
+                     <br>
+                     <div class="asset-row">
+                        <span class="symbol-text">DATA PIPELINE</span>
+                        <span class="price-text" style="color:#00ff7f">ACTIVE (1m LATENCY)</span>
+                     </div>
+                     <div class="asset-row">
+                        <span class="symbol-text">API GATEWAY</span>
+                        <span class="price-text" style="color:#00ff7f">HEALTHY (2ms)</span>
+                     </div>
+                     <div class="asset-row">
+                        <span class="symbol-text">ML INFERENCE</span>
+                        <span class="price-text" style="color:#ffcc00">STANDBY</span>
+                     </div>
                  </div>
-                 <div class="asset-row">
-                    <span class="symbol-text">API GATEWAY</span>
-                    <span class="price-text" style="color:#00ff7f">HEALTHY (2ms)</span>
-                 </div>
-                 <div class="asset-row">
-                    <span class="symbol-text">ML INFERENCE</span>
-                    <span class="price-text" style="color:#ffcc00">STANDBY</span>
-                 </div>
-             </div>
-             """, unsafe_allow_html=True)
+                 """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()

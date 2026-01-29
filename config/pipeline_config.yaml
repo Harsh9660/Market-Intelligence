@@ -15,8 +15,8 @@ pipeline:
     - AMD
   
   data:
-    period: "1mo"      # Increased period to ensure enough data for indicators
-    interval: "1h"     # 1h interval is more stable for "Live" demo than 1m (which often has gaps or requires premium data)
+    period: "6mo"      # Increased to 6mo to ensure plenty of data for SMA_200 (need >200 trading hours)
+    interval: "1h"     # 1h interval is more stable for "Live" demo than 1m
     live_mode: true
 
   features:
