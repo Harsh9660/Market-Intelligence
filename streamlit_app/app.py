@@ -249,178 +249,70 @@ def main():
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
-                    
-    main()
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-import requests
 
-API_BASE_URL = "http://localhost:8001/api/v1"
+    # --- VIEW: ASSET ANALYSIS ---
+    elif st.session_state.view_mode == "Asset Analysis":
+        ticker = st.session_state.selected_ticker
+        
+        # Header
+        st.title(f"{ticker} Analysis")
+        
+        # Fetch Data
+        df = fetch_data(ticker)
+        
+        if df is not None and not df.empty:
+            # Preprocessing
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.sort_values('date')
+            
+            latest = df.iloc[-1]
+            prev = df.iloc[-2] if len(df) > 1 else latest
+            
+            # Metrics
+            m1, m2, m3, m4 = st.columns(4)
+            
+            price_delta = ((latest['close'] - prev['close']) / prev['close']) * 100
+            card_metric("Price", f"{latest['close']:,.2f}", price_delta, prefix="$", col=m1)
+            
+            vol_delta = ((latest['volume'] - prev['volume']) / prev['volume']) * 100 if prev['volume'] > 0 else 0
+            card_metric("Volume", f"{latest['volume']:,.0f}", vol_delta, col=m2)
+            
+            rsi_val = latest.get('rsi', 0)
+            card_metric("RSI (14)", f"{rsi_val:.2f}", None, col=m3)
+            
+            vol_val = latest.get('volatility', 0)
+            card_metric("Volatility", f"{vol_val:.4f}", None, col=m4)
+            
+            st.markdown("###")
+            
+            # Charts
+            tab1, tab2 = st.tabs(["Price Action", "Raw Data"])
+            
+            with tab1:
+                # Candlestick
+                fig = go.Figure(data=[go.Candlestick(x=df['date'],
+                    open=df['open'], high=df['high'],
+                    low=df['low'], close=df['close'], name=ticker)])
+                
+                fig.update_layout(height=500, template='plotly_dark', 
+                                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                  xaxis_rangeslider_visible=False, margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # RSI Chart if available
+                if 'rsi' in df.columns:
+                    fig_rsi = px.line(df, x='date', y='rsi', title="RSI Trend")
+                    fig_rsi.update_layout(height=250, template='plotly_dark',
+                                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
+                    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
+                    st.plotly_chart(fig_rsi, use_container_width=True)
+            
+            with tab2:
+                st.dataframe(df.sort_values('date', ascending=False), use_container_width=True)
+        else:
+            st.warning(f"No data available for {ticker}")
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Market Analysis Terminal",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# --------------------------------------------------
-# DATA LAYER
-# --------------------------------------------------
-@st.cache_data(ttl=60)
-def fetch_tickers():
-    try:
-        r = requests.get(f"{API_BASE_URL}/tickers/", timeout=3)
-        return r.json().get("tickers", [])
-    except:
-        return []
-
-@st.cache_data(ttl=60)
-def fetch_market_summary():
-    try:
-        r = requests.get(f"{API_BASE_URL}/summary/", timeout=3)
-        return r.json().get("summary", [])
-    except:
-        return []
-
-@st.cache_data(ttl=60)
-def fetch_data(ticker):
-    try:
-        r = requests.get(f"{API_BASE_URL}/data/{ticker}/", timeout=3)
-        df = pd.DataFrame(r.json().get("data", []))
-        if not df.empty:
-            df["Date"] = pd.to_datetime(df["Date"])
-        return df
-    except:
-        return pd.DataFrame()
-
-# --------------------------------------------------
-# SESSION STATE INIT
-# --------------------------------------------------
-def init_state():
-    if "view_mode" not in st.session_state:
-        st.session_state.view_mode = "Market Pulse"
-    if "selected_ticker" not in st.session_state:
-        st.session_state.selected_ticker = None
-
-# --------------------------------------------------
-# SIDEBAR
-# --------------------------------------------------
-def sidebar(tickers):
-    with st.sidebar:
-        st.markdown("## ⚡ RevenueIQ")
-        st.caption("INTELLIGENCE TERMINAL")
-        st.markdown("---")
-
-        st.radio(
-            "VIEW MODE",
-            ["Market Pulse", "Asset Analysis"],
-            key="view_mode"
-        )
-
-        if st.session_state.view_mode == "Asset Analysis":
-            st.session_state.selected_ticker = st.selectbox(
-                "ACTIVE ASSET",
-                tickers,
-                index=0 if not st.session_state.selected_ticker else tickers.index(st.session_state.selected_ticker)
-            )
-
-        if st.button("🔄 Refresh"):
-            st.cache_data.clear()
-            st.rerun()
-
-# --------------------------------------------------
-# MARKET PULSE VIEW
-# --------------------------------------------------
-def market_pulse():
-    st.title("Market Pulse")
-    summary = fetch_market_summary()
-
-    if not summary:
-        st.warning("No market data available")
-        return
-
-    cols = st.columns(3)
-    for i, item in enumerate(summary):
-        with cols[i % 3]:
-            if st.button(
-                f"{item['ticker']}  |  ${item['last_close']:.2f}",
-                use_container_width=True
-            ):
-                st.session_state.selected_ticker = item["ticker"]
-                st.session_state.view_mode = "Asset Analysis"
-                st.rerun()
-
-# --------------------------------------------------
-# ASSET ANALYSIS VIEW
-# --------------------------------------------------
-def asset_analysis():
-    ticker = st.session_state.selected_ticker
-    st.title(ticker)
-
-    df = fetch_data(ticker)
-    if df.empty:
-        st.error("No data for selected asset")
-        return
-
-    latest = df.iloc[-1]
-    prev = df.iloc[-2] if len(df) > 1 else latest
-
-    # KPIs
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Price", f"${latest['Close']:.2f}", f"{(latest['Close']/prev['Close']-1)*100:.2f}%")
-    c2.metric("RSI", f"{latest.get('RSI',0):.1f}")
-    c3.metric("Volatility", f"{latest.get('Volatility',0):.2f}")
-    c4.metric("MACD", f"{latest.get('MACD_Signal',0):.3f}")
-
-    # Forecast
-    signal = latest.get("Signal_Label", "NEUTRAL")
-    score = latest.get("Signal_Score", 0)
-
-    st.subheader("🤖 Forecast")
-    st.info(f"Signal: **{signal}** | Confidence: **{score:.2f}/10**")
-
-    # Price Chart
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"], name="Price"))
-    fig.update_layout(template="plotly_dark", height=450)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Tabs
-    t1, t2 = st.tabs(["Raw Data", "Correlation"])
-
-    with t1:
-        st.dataframe(df, use_container_width=True)
-
-    with t2:
-        numeric = df.select_dtypes("number")
-        corr = numeric.corr()
-        fig_corr = px.imshow(corr, aspect="auto", color_continuous_scale="teal")
-        st.plotly_chart(fig_corr, use_container_width=True)
-
-# --------------------------------------------------
-# MAIN
-# --------------------------------------------------
-def main():
-    init_state()
-
-    tickers = fetch_tickers()
-    if not tickers:
-        st.error("API Offline")
-        return
-
-    sidebar(tickers)
-
-    if st.session_state.view_mode == "Market Pulse":
-        market_pulse()
-    else:
-        asset_analysis()
-
-# --------------------------------------------------
 if __name__ == "__main__":
     main()
